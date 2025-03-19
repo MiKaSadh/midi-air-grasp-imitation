@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI Air Grasp</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+</head>
+<body>
+    <h2>画面をクリックして音を開始してください</h2>
+    <script>
+        let video;
+        let detector;
+        let midiAccess;
+        let osc, filter, reverb;
+        let currentFreq = 440, targetFreq = 440;
+        let currentBrightness = 0.5, targetBrightness = 0.5;
+        let isStarted = false;
+        let baseNote = 440; // MIDIキーボードで入力された基準の音
+
+        async function setup() {
+            createCanvas(640, 480);
+            video = createCapture(VIDEO);
+            video.size(640, 480);
+            video.hide();
+
+            // 音の設定
+            osc = new p5.Oscillator('sawtooth');
+            filter = new p5.LowPass();
+            reverb = new p5.Reverb();
+
+            osc.disconnect();
+            osc.connect(filter);
+            reverb.process(filter, 3, 2);
+
+            // WebMIDI APIのセットアップ
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(onMIDISuccess, onMIDIFailure);
+            }
+
+            // TensorFlowの手検出モデルをロード
+            detector = await handPoseDetection.createDetector(
+                handPoseDetection.SupportedModels.MediaPipeHands,
+                { runtime: 'tfjs' }
+            );
+
+            detectHands();
+        }
+
+        function mousePressed() {
+            if (!isStarted) {
+                osc.start();
+                isStarted = true;
+            }
+        }
+
+        // MIDIのセットアップ
+        function onMIDISuccess(midi) {
+            midiAccess = midi;
+            const inputs = midiAccess.inputs.values();
+            for (let input of inputs) {
+                input.onmidimessage = handleMIDIMessage;
+            }
+        }
+
+        function onMIDIFailure() {
+            console.error("MIDI接続に失敗しました");
+        }
+
+        function handleMIDIMessage(event) {
+            const [status, note, velocity] = event.data;
+            if (status === 144 && velocity > 0) { // ノートオン
+                baseNote = midiToFreq(note); // MIDIノートを基準周波数に変換
+            }
+        }
+
+        function midiToFreq(midiNote) {
+            return 440 * Math.pow(2, (midiNote - 69) / 12);
+        }
+
+        async function detectHands() {
+            while (true) {
+                const hands = await detector.estimateHands(video.elt);
+                if (hands.length > 0) {
+                    let rightHand = hands.find(h => h.handedness === 'Right');
+                    let leftHand = hands.find(h => h.handedness === 'Left');
+
+                    if (rightHand) {
+                        let rightHandY = rightHand.keypoints[0].y / height;
+                        targetFreq = baseNote * map(rightHandY, 1, 0, 0.8, 1.2); // ピッチを変化
+                        let handWidth = dist(
+                            rightHand.keypoints[5].x, rightHand.keypoints[5].y,
+                            rightHand.keypoints[17].x, rightHand.keypoints[17].y
+                        );
+                        targetBrightness = constrain(map(handWidth, 0, width / 2, 0, 1), 0, 1);
+                    }
+                }
+                await new Promise(resolve => setTimeout(resolve, 30)); // 30msごとに更新
+            }
+        }
+
+        function draw() {
+            background(0);
+            image(video, 0, 0, width, height);
+
+            if (!isStarted) {
+                fill(255, 0, 0);
+                textSize(20);
+                text("画面をクリックしてください", 20, 30);
+                return;
+            }
+
+            // スムージング
+            currentFreq = lerp(currentFreq, targetFreq, 0.1);
+            currentBrightness = lerp(currentBrightness, targetBrightness, 0.1);
+
+            osc.freq(currentFreq);
+            osc.amp(0.5);
+
+            filter.freq(500 + currentBrightness * 1500);
+            filter.res(2 + currentBrightness * 3);
+
+            fill(255);
+            textSize(24);
+            text(`Base Note: ${Math.round(baseNote)} Hz`, 20, 30);
+            text(`Pitch: ${Math.round(currentFreq)} Hz`, 20, 60);
+            text(`Brightness: ${currentBrightness.toFixed(2)}`, 20, 90);
+        }
+    </script>
+</body>
+</html>
