@@ -12,6 +12,10 @@
 <body>
     <h2>画面をクリックして音を開始してください</h2>
     <script>
+        function convertMidiToFreq(midiNote) { // ✅ 正しい関数名
+            return 440 * Math.pow(2, (midiNote - 69) / 12);
+        }
+
         let video;
         let detector;
         let midiAccess;
@@ -59,34 +63,31 @@
 
         // MIDIのセットアップ
         function onMIDISuccess(midi) {
-    midiAccess = midi;
-    console.log("MIDIデバイス接続成功:", midiAccess);
+            midiAccess = midi;
+            console.log("MIDIデバイス接続成功:", midiAccess);
 
-    for (let input of midiAccess.inputs.values()) {
-        console.log("MIDIデバイス:", input.name); // デバイス名を表示
-        input.onmidimessage = (event) => {
-            console.log(`MIDIイベント: ${event.data}`); // デバッグ用
-            handleMIDIMessage(event);
-        };
-    }
-}
+            for (let input of midiAccess.inputs.values()) {
+                console.log("MIDIデバイス:", input.name); // デバイス名を表示
+                input.onmidimessage = (event) => {
+                    console.log(`MIDIイベント: ${event.data}`); // デバッグ用
+                    handleMIDIMessage(event);
+                };
+            }
+        }
 
         function onMIDIFailure() {
             console.error("MIDI接続に失敗しました");
         }
 
-        function handleMIDIMessage(event) { // ✅ MIDIイベント処理
-    const [status, note, velocity] = event.data;
-    console.log(`MIDIメッセージ受信: ${status}, ${note}, ${velocity}`);
+        function handleMIDIMessage(event) {
+            const [status, note, velocity] = event.data;
+            console.log(`MIDIメッセージ受信: ${status}, ${note}, ${velocity}`);
 
-    if (status === 144 && velocity > 0) { // ノートオン
-        baseNote = convertMidiToFreq(note); // ✅ ここを修正
-        console.log(`MIDIノート受信: ${note}, 周波数: ${baseNote}`);
-    }
-}
-
-        function convertmidiToFreq(midiNote) {
-            return 440 * Math.pow(2, (midiNote - 69) / 12);
+            if (status === 144 && velocity > 0) { // ノートオン
+                baseNote = convertMidiToFreq(note);
+                targetFreq = baseNote; // ✅ MIDI入力を targetFreq に反映
+                console.log(`MIDIノート受信: ${note}, 周波数: ${baseNote}`);
+            }
         }
 
         async function detectHands() {
@@ -98,7 +99,7 @@
 
                     if (rightHand) {
                         let rightHandY = rightHand.keypoints[0].y / height;
-                        targetFreq = baseNote * map(rightHandY, 1, 0, 0.8, 1.2); // ピッチを変化
+                        targetFreq = baseNote * map(rightHandY, 1, 0, 0.8, 1.2); // ✅ 修正
                         let handWidth = dist(
                             rightHand.keypoints[5].x, rightHand.keypoints[5].y,
                             rightHand.keypoints[17].x, rightHand.keypoints[17].y
@@ -114,28 +115,15 @@
             background(0);
             image(video, 0, 0, width, height);
 
-            if (!isStarted) {
-                fill(255, 0, 0);
-                textSize(20);
-                text("画面をクリックしてください", 20, 30);
-                return;
-            }
+            if (!isStarted) return;
 
-            // スムージング
             currentFreq = lerp(currentFreq, targetFreq, 0.1);
             currentBrightness = lerp(currentBrightness, targetBrightness, 0.1);
 
             osc.freq(currentFreq);
             osc.amp(0.5);
-
             filter.freq(500 + currentBrightness * 1500);
             filter.res(2 + currentBrightness * 3);
-
-            fill(255);
-            textSize(24);
-            text(`Base Note: ${Math.round(baseNote)} Hz`, 20, 30);
-            text(`Pitch: ${Math.round(currentFreq)} Hz`, 20, 60);
-            text(`Brightness: ${currentBrightness.toFixed(2)}`, 20, 90);
         }
     </script>
 </body>
