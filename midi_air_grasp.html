@@ -59,25 +59,33 @@
 
         // MIDIのセットアップ
         function onMIDISuccess(midi) {
-            midiAccess = midi;
-            const inputs = midiAccess.inputs.values();
-            for (let input of inputs) {
-                input.onmidimessage = handleMIDIMessage;
-            }
-        }
+    midiAccess = midi;
+    console.log("MIDIデバイス接続成功:", midiAccess);
+
+    for (let input of midiAccess.inputs.values()) {
+        console.log("MIDIデバイス:", input.name); // デバイス名を表示
+        input.onmidimessage = (event) => {
+            console.log(`MIDIイベント: ${event.data}`); // デバッグ用
+            handleMIDIMessage(event);
+        };
+    }
+}
 
         function onMIDIFailure() {
             console.error("MIDI接続に失敗しました");
         }
 
-        function handleMIDIMessage(event) {
-            const [status, note, velocity] = event.data;
-            if (status === 144 && velocity > 0) { // ノートオン
-                baseNote = midiToFreq(note); // MIDIノートを基準周波数に変換
-            }
-        }
+        function handleMIDIMessage(event) { // ✅ MIDIイベント処理
+    const [status, note, velocity] = event.data;
+    console.log(`MIDIメッセージ受信: ${status}, ${note}, ${velocity}`);
 
-        function midiToFreq(midiNote) {
+    if (status === 144 && velocity > 0) { // ノートオン
+        baseNote = convertMidiToFreq(note); // ✅ ここを修正
+        console.log(`MIDIノート受信: ${note}, 周波数: ${baseNote}`);
+    }
+}
+
+        function convertmidiToFreq(midiNote) {
             return 440 * Math.pow(2, (midiNote - 69) / 12);
         }
 
